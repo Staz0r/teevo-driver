@@ -42,7 +42,7 @@ Switches the device between Hardware/Software modes.
 - **Send:** `[0x01]` (Active/Online) or `[0x00]` (Inactive).
 - **Receive:** Echo of the command.
 
-### 0x03: Device OnLine (Heartbeat)
+### 0x03: Device Online (Heartbeat)
 Checks the status of the **Wireless Link**.
 - **Send:** Empty Data.
 - **Receive:**
