@@ -10,13 +10,19 @@ const EventEmitter = require("events");
  * driver.connect();
  */
 class TeevoDriver extends EventEmitter {
-    
+
+    #device = null;
+
+    // VID 13652
+    static VENDOR_ID = 0x3554;
+    // PID 62752
+    static PRODUCT_ID = 0xF520;
+    // Usage Page 65282
+    static USAGE_PAGE = 0xFF02;
+    static REPORT_ID = 0x08; 
+
     constructor() {
         super();
-
-        this.VENDOR_ID = 13652;
-        this.PRODUCT_ID = 62752;
-        this.USAGE_PAGE = 65282;
 
         this.COMMANDS = {
             PCDriverStatus: 0x02,
@@ -24,9 +30,6 @@ class TeevoDriver extends EventEmitter {
             DeviceOnLine: 0x03,
             GetCurrentConfig: 0x0E
         };
-        
-        this.REPORT_ID = 0x08;
-        this.device = null;
     }
     
     /**
@@ -38,9 +41,9 @@ class TeevoDriver extends EventEmitter {
         const devices = HID.devices();
         
         const targetInterface = devices.find(d =>
-            d.vendorId === this.VENDOR_ID &&
-            d.productId === this.PRODUCT_ID &&
-            d.usagePage === this.USAGE_PAGE
+            d.vendorId === TeevoDriver.VENDOR_ID &&
+            d.productId === TeevoDriver.PRODUCT_ID &&
+            d.usagePage === TeevoDriver.USAGE_PAGE
         );
 
         if (!targetInterface) {
@@ -48,11 +51,11 @@ class TeevoDriver extends EventEmitter {
         }
         
         try {
-            this.device = new HID.HID(targetInterface.path);
+            this.#device = new HID.HID(targetInterface.path);
             console.log(`[System] Connected: ${targetInterface.product || 'Teevo Mouse'}`);
             
-            this.device.on("data", (data) => this.decode(data));
-            this.device.on("error", (err) => this.emit('error', err));
+            this.#device.on("data", (data) => this.#decode(data));
+            this.#device.on("error", (err) => this.emit('error', err));
 
             // Set driver mode to 'Active' on startup
             this.setDriverStatus(true);
@@ -84,7 +87,7 @@ class TeevoDriver extends EventEmitter {
      * @param {number[]} [data=[]] - Data bytes to include in the packet.
      */
     send(cmdId, data = []) {
-        if (!this.device) return;
+        if (!this.#device) return;
 
         const packet = Buffer.alloc(16);
         
@@ -95,8 +98,8 @@ class TeevoDriver extends EventEmitter {
         packet[15] = this.calculateChecksum(packet);
 
         try {
-            const message = Buffer.from([this.REPORT_ID, ...packet]);
-            this.device.write(message);
+            const message = Buffer.from([TeevoDriver.REPORT_ID, ...packet]);
+            this.#device.write(message);
             console.log(`Sent [0x${cmdId.toString(16)}]: ${message.toString("hex")}`);
         } catch (err) {
             console.error("Write failed:", err.message);
@@ -129,7 +132,7 @@ class TeevoDriver extends EventEmitter {
      * Internal method to parse raw data received from the mouse.
      * @param {Buffer} data - The raw HID report buffer.
      */
-    decode(data) {
+    #decode(data) {
         const buf = [...data]; 
         const cmdId = buf[1]; // Index 1 because Index 0 is Report ID 0x08
 
@@ -159,12 +162,12 @@ class TeevoDriver extends EventEmitter {
      * Safely closes the connection to the mouse.
      */
     disconnect() {
-        if (this.device) {
+        if (this.#device) {
             try {
                 this.setDriverStatus(false);
             } catch (e) {}
-            this.device.close();
-            this.device = null;
+            this.#device.close();
+            this.#device = null;
             console.log("Disconnected.");
         }
     }
