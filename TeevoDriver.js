@@ -1,5 +1,6 @@
 const HID = require("node-hid");
 const EventEmitter = require("events");
+const Protocol = require("./Protocol")
 
 /**
  * Driver for the Teevo/Terra Pro XD9 Mouse.
@@ -13,23 +14,8 @@ class TeevoDriver extends EventEmitter {
 
     #device = null;
 
-    // VID 13652
-    static VENDOR_ID = 0x3554;
-    // PID 62752
-    static PRODUCT_ID = 0xF520;
-    // Usage Page 65282
-    static USAGE_PAGE = 0xFF02;
-    static REPORT_ID = 0x08; 
-
     constructor() {
         super();
-
-        this.COMMANDS = {
-            PCDriverStatus: 0x02,
-            BatteryLevel: 0x04,
-            DeviceOnLine: 0x03,
-            GetCurrentConfig: 0x0E
-        };
     }
     
     /**
@@ -41,9 +27,9 @@ class TeevoDriver extends EventEmitter {
         const devices = HID.devices();
         
         const targetInterface = devices.find(d =>
-            d.vendorId === TeevoDriver.VENDOR_ID &&
-            d.productId === TeevoDriver.PRODUCT_ID &&
-            d.usagePage === TeevoDriver.USAGE_PAGE
+            d.vendorId === Protocol.HID.VENDOR_ID &&
+            d.productId === Protocol.HID.PRODUCT_ID &&
+            d.usagePage === Protocol.HID.USAGE_PAGE
         );
 
         if (!targetInterface) {
@@ -98,7 +84,7 @@ class TeevoDriver extends EventEmitter {
         packet[15] = this.calculateChecksum(packet);
 
         try {
-            const message = Buffer.from([TeevoDriver.REPORT_ID, ...packet]);
+            const message = Buffer.from([Protocol.HID.REPORT_ID, ...packet]);
             this.#device.write(message);
             console.log(`Sent [0x${cmdId.toString(16)}]: ${message.toString("hex")}`);
         } catch (err) {
@@ -111,21 +97,21 @@ class TeevoDriver extends EventEmitter {
      * @param {boolean} isActive - True to enable driver features.
      */
     setDriverStatus(isActive) {
-        this.send(this.COMMANDS.PCDriverStatus, [isActive ? 1 : 0]);
+        this.send(Protocol.COMMANDS.PCDriverStatus, [isActive ? 1 : 0]);
     }
 
     /**
      * Requests the current battery level and charging status from the mouse.
      */
     requestBattery() {
-        this.send(this.COMMANDS.BatteryLevel); 
+        this.send(Protocol.COMMANDS.BatteryLevel); 
     }
 
     /**
      * Checks if the device is currently online and responding.
      */
     checkOnline() {
-        this.send(this.COMMANDS.DeviceOnLine);
+        this.send(Protocol.COMMANDS.DeviceOnLine);
     }
 
     /**
@@ -134,25 +120,25 @@ class TeevoDriver extends EventEmitter {
      */
     #decode(data) {
         const buf = [...data]; 
-        const cmdId = buf[1]; // Index 1 because Index 0 is Report ID 0x08
+        const cmdId = buf[Protocol.OFFSETS.CMD_ID];
 
-        if (cmdId === this.COMMANDS.BatteryLevel) {
+        if (cmdId === Protocol.COMMANDS.BatteryLevel) {
             this.emit("battery", {
-                level: buf[6],
-                isCharging: buf[7] === 1,
-                voltage: (buf[8] << 8) + buf[9]
+                level: buf[Protocol.OFFSETS.BAT_LEVEL],
+                isCharging: buf[Protocol.OFFSETS.BAT_CHARGING] === Protocol.VALUES.CHARGING,
+                voltage: (buf[Protocol.OFFSETS.BAT_VOLT_HI] << 8) + buf[Protocol.OFFSETS.BAT_VOLT_LO]
             });
-        } else if (cmdId === this.COMMANDS.PCDriverStatus) {
+        } else if (cmdId === Protocol.COMMANDS.PCDriverStatus) {
             this.emit("driverStatus", {
-                isOn: buf[6] === 1,
+                isOn: buf[Protocol.OFFSETS.ONLINE_STATE] === Protocol.VALUES.ACTIVE,
             });
-        } else if (cmdId === this.COMMANDS.DeviceOnLine) {
+        } else if (cmdId === Protocol.COMMANDS.DeviceOnLine) {
             const addr = [buf[9], buf[8], buf[7]]
                 .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
                 .join(':');
 
             this.emit("online", {
-                isOn: buf[6] === 1,
+                isOn: buf[Protocol.OFFSETS.ONLINE_STATE] === Protocol.VALUES.ACTIVE,
                 address: addr
             })
         }
