@@ -53,7 +53,11 @@ const Protocol = {
     // Byte offsets for incoming messages (after the 0x08 Report ID)
     OFFSETS: {
         CMD_ID: 1,
+        STATUS: 2,
+        ADDR_HI: 3,
+        ADDR_LO: 4,
         DATA_LEN: 5,
+        DATA_START: 6,
         
         // Battery (Relative to buf[0])
         BAT_LEVEL: 6,
@@ -66,15 +70,37 @@ const Protocol = {
     },
 
     // The Mouse's Internal Memory "Map" (EEPROM Addresses)
-    // These are used with the READ_FLASH (0x08) command
+    // These are used with the ReadFlashData (0x08) command
     MEMORY: {
-        POLLING_RATE: 0x00,
-        DPI_STAGES: 0x02,
-        CURRENT_DPI_INDEX: 0x04,
+        ReportRate: 0x00,
+        maxDpiStage: 0x02,
+        CurrentDPI: 0x04,
+        KeyOperation: 0x08,
         LOD: 0x0A,
-        DPI_VALUES: 0x0C,       // Start of DPI value block
-        RGB_MODE: 160,          // 0xA0
-        SLEEP_TIME: 173         // 0xAD
+        DPIValue: 0x0C,
+        DPIColor: 0x2C,
+        DPIEffectMode: 0x4C,
+        DPIEffectBrightness: 0x4E,
+        DPIEffectSpeed: 0x50,
+        DPIEffectState: 0x52,
+        Light: 0xA0,
+        DebounceTime: 0xA9,
+        MotionSync: 0xAB,
+        SleepTime: 0xAD,
+        Angle: 0xAF,
+        Ripple: 0xB1,
+        MovingOffLight: 0xB3,
+        PerformanceState: 0xB5,
+        Performance: 0xB7,
+        SensorMode: 0xB9,
+        AngleTune: 0xBD,
+        AngleTuneState: 0xBF,
+        SensorFPS20K: 0xE1,
+        WheelDebounceTime: 0xE3,
+        DebounceReleaseTime: 0xE5,
+        KeyFunction: 0x60,
+        ShortcutKey: 0x100,
+        Macro: 0x300
     },
 
     // Static Values

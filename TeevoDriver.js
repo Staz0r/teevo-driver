@@ -65,6 +65,28 @@ class TeevoDriver extends EventEmitter {
         let val = (85 - (sum & 0xFF)) & 0xFF;
         return (val - 8) & 0xFF;
     }
+    
+    /**
+     * Reads a chunk of the mouse's internal memory.
+     * @param {number} address - The starting address (e.g. 160 for DPI light).
+     * @param {number} length - How many bytes to read (max 10).
+     */
+    readFlash(address, length = 10) {
+        if (!this.#device) return;
+        
+        const packet = Buffer.alloc(16);
+        packet[0] = Protocol.COMMANDS.ReadFlashData;
+        packet[2] = (address >> 8) & 0xFF;
+        packet[3] = address & 0xFF;
+        packet[4] = length;
+        packet[15] = this.calculateChecksum(packet);
+
+        const message = Buffer.from([Protocol.HID.REPORT_ID, ...packet]);
+        this.#device.write(message);
+        this.emit('debug', {
+            message: `Sent [0x${Protocol.COMMANDS.ReadFlashData}]: ${message.toString("hex")}`
+        });
+    }
 
     /**
      * Packs and sends a 16-byte command to the hardware.
@@ -122,25 +144,64 @@ class TeevoDriver extends EventEmitter {
         const buf = [...data]; 
         const cmdId = buf[Protocol.OFFSETS.CMD_ID];
 
-        if (cmdId === Protocol.COMMANDS.BatteryLevel) {
-            this.emit("battery", {
-                level: buf[Protocol.OFFSETS.BAT_LEVEL],
-                isCharging: buf[Protocol.OFFSETS.BAT_CHARGING] === Protocol.VALUES.CHARGING,
-                voltage: (buf[Protocol.OFFSETS.BAT_VOLT_HI] << 8) + buf[Protocol.OFFSETS.BAT_VOLT_LO]
-            });
-        } else if (cmdId === Protocol.COMMANDS.PCDriverStatus) {
-            this.emit("driverStatus", {
-                isOn: buf[Protocol.OFFSETS.ONLINE_STATE] === Protocol.VALUES.ACTIVE,
-            });
-        } else if (cmdId === Protocol.COMMANDS.DeviceOnLine) {
-            const addr = [buf[9], buf[8], buf[7]]
-                .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
-                .join(':');
+        switch (cmdId) {
+            case Protocol.COMMANDS.BatteryLevel:
+            {
+                    this.emit("battery", {
+                        level: buf[Protocol.OFFSETS.BAT_LEVEL],
+                        isCharging: buf[Protocol.OFFSETS.BAT_CHARGING] === Protocol.VALUES.CHARGING,
+                        voltage: (buf[Protocol.OFFSETS.BAT_VOLT_HI] << 8) + buf[Protocol.OFFSETS.BAT_VOLT_LO]
+                    });
+                    break;
+            }
+            case Protocol.COMMANDS.PCDriverStatus:
+            {
+                    this.emit("driverStatus", {
+                        isOn: buf[Protocol.OFFSETS.ONLINE_STATE] === Protocol.VALUES.ACTIVE,
+                    });
+                    break;
+            }
+            case Protocol.COMMANDS.DeviceOnLine:
+            {
+                const addr = [buf[9], buf[8], buf[7]]
+                    .map(b => b.toString(16).toUpperCase().padStart(2, '0'))
+                    .join(':');
 
-            this.emit("online", {
-                isOn: buf[Protocol.OFFSETS.ONLINE_STATE] === Protocol.VALUES.ACTIVE,
-                address: addr
-            })
+                this.emit("online", {
+                    isOn: buf[Protocol.OFFSETS.ONLINE_STATE] === Protocol.VALUES.ACTIVE,
+                    address: addr
+                })
+                break;
+            }
+            case Protocol.COMMANDS.ReadFlashData:
+            {
+                const len = buf[Protocol.OFFSETS.DATA_LEN];
+                const memory = buf.slice(
+                    Protocol.OFFSETS.DATA_START,
+                    Protocol.OFFSETS.DATA_START + len);
+                const flashAddr = (buf[Protocol.OFFSETS.ADDR_HI] << 8) + buf[Protocol.OFFSETS.ADDR_LO];
+
+                this.emit("flash", {address: flashAddr, data: memory});
+                if (flashAddr === Protocol.MEMORY.Light && memory.length >= 7) {
+                    this.emit("lightEffect", {
+                        mode: memory[0],
+                        color: [memory[1], memory[2], memory[3]],
+                        speed: memory[4],
+                        brightness: memory[5]
+                    });
+                }
+                if (flashAddr === Protocol.MEMORY.DPIEffectMode && memory.length >= 8) {
+                    this.emit("dpiEffect", {
+                        mode: memory[0],
+                        brightness: memory[2],
+                        speed: memory[4],
+                        state: memory[6]
+                    });
+                }
+                break;
+            }
+            default:
+                console.warn(`[System] Unknown Command ID: 0x0${cmdId.toString(16)}`);
         }
     }
     
